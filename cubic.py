@@ -9,12 +9,13 @@ class Point(collections.namedtuple('Point', 'x y z')):
     def __repr__(self):
         return str(self)
 
-State = collections.namedtuple('State', 'board turn depth')
+State = collections.namedtuple('State', 'board turn')
 Score = collections.namedtuple('Score', 'mmm yyy mm yy m b y')
 ScoreSpread = collections.namedtuple('ScoreSpread', 'b m mm yy y')
 
-MAX_SCORE = 50000
-DEPTH_START = 6
+WIN_SCORE = 50000
+MAX_SCORE = 50001
+DEPTH_MAX = 8
 
 score0 = Score(0, 0, 0, 0, 0, 0, 0)
 my_score = dict([
@@ -48,7 +49,7 @@ def parse_input(user_input):
 def minimax_alpha_beta(state, depth, alpha, beta, maximizing_player,
                        get_possible_moves, make_move, evaluate_state, is_terminal):
     """
-    Generic minimax algorithm with alpha-beta pruning.
+    minimax algorithm with alpha-beta pruning.
 
     Args:
         state: Current game state
@@ -71,23 +72,25 @@ def minimax_alpha_beta(state, depth, alpha, beta, maximizing_player,
 
     # Base cases
     if depth == 0 or is_terminal(state):
-        #print('TERMINAL:', depth, state)
+        #es = evaluate_state(state)
+        #print('TERMINAL:', depth, es, state)
         #game.print_board(None, state)
+        #return es, None
         return evaluate_state(state), None
 
-    possible_moves = get_possible_moves(state, depth)
-    #print('possible_moves:', possible_moves, 'depth:', depth)
-    #print('possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves], 'depth:', depth)
+    possible_moves = get_possible_moves(state)
+    #print('enter minimax: start: depth:', depth, 'possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves])
 
     if maximizing_player:
         max_eval = -MAX_SCORE
         best_move = None
 
         for move in possible_moves:
+            #print('consider max move: depth:', depth, 'move:', move, 'possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves])
             new_state = make_move(state, move)
-            eval_score, _ = minimax_alpha_beta(new_state, depth - 1, alpha, beta, False,
+            eval_score, ss = minimax_alpha_beta(new_state, depth - 1, alpha, beta, False,
                                                get_possible_moves, make_move, evaluate_state, is_terminal)
-            #print('MAXING:', eval_score)
+            #print('MAXING: depth:', depth, 'move:', move, 'eval_score:', eval_score, 'ss:', ss)
 
             if eval_score > max_eval:
                 max_eval = eval_score
@@ -99,6 +102,7 @@ def minimax_alpha_beta(state, depth, alpha, beta, maximizing_player,
             if beta <= alpha:
                 break  # Beta cutoff
 
+        #print('return max: max_eval:', max_eval, 'best_move:', best_move)
         return max_eval, best_move
 
     else:  # Minimizing player
@@ -106,10 +110,11 @@ def minimax_alpha_beta(state, depth, alpha, beta, maximizing_player,
         best_move = None
 
         for move in possible_moves:
+            #print('consider min move: depth:', depth, 'move:', move, 'possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves])
             new_state = make_move(state, move)
-            eval_score, _ = minimax_alpha_beta(new_state, depth - 1, alpha, beta, True,
+            eval_score, ss = minimax_alpha_beta(new_state, depth - 1, alpha, beta, True,
                                                get_possible_moves, make_move, evaluate_state, is_terminal)
-            #print('MINING:', eval_score)
+            #print('MINING: depth:', depth, 'move:', move, 'eval_score:', eval_score, 'ss:', ss)
 
             if eval_score < min_eval:
                 min_eval = eval_score
@@ -121,6 +126,7 @@ def minimax_alpha_beta(state, depth, alpha, beta, maximizing_player,
             if beta <= alpha:
                 break  # Alpha cutoff
 
+        #print('return min: min_eval:', min_eval, 'best_move:', best_move)
         return min_eval, best_move
 
 
@@ -149,7 +155,7 @@ class TicTacToe:
                 (51, 55, 59, 63), (52, 53, 54, 55), (56, 57, 58, 59), (60, 61, 62, 63)
                 )
 
-        self.state = State(' '*64, 'X', tuple([0]*64))
+        self.state = State(' '*64, 'X')
         self.last_user_move = None
         self.last_computer_move = None
 
@@ -165,8 +171,7 @@ class TicTacToe:
 
     def make_move(self, state, cell):
         nturn = 'X' if state.turn == 'O' else 'O'
-        ndepth = max(state.depth) + 1
-        nstate = State(state.board[:cell] + state.turn + state.board[cell+1:], nturn, tuple(state.depth[:cell] + (ndepth,) + state.depth[cell+1:]))
+        nstate = State(state.board[:cell] + state.turn + state.board[cell+1:], nturn)
         return nstate
 
     def update_state(self, cell):
@@ -206,8 +211,6 @@ class TicTacToe:
                 row = []
                 for y in range(4):
                     i = self.zyx2i((z, y, x))
-                    #cell = ' '+state.board[i]+' '
-                    #d = self.state.depth[i]
                     cell = state.board[i]
                     if winner and i in winner:
                         cell = f" \033[33m{cell}\033[0m "  # Some color for winnng user
@@ -231,7 +234,7 @@ class TicTacToe:
         i = self.zyx2i(coords)
         return 0 <= z < 4 and 0 <= y < 4 and 0 <= x < 4 and self.state.board[i] == ' '
 
-    def get_possible_moves(self, state, depth):
+    def get_possible_moves(self, state):
         """Return list of empty cell coordinates, ordered by "best" move first."""
         mvs = [i for i,cell in enumerate(state.board) if cell == ' ']
 
@@ -263,22 +266,20 @@ class TicTacToe:
         # if yy > 2, that means we must block the user from forcing a win.
         if scores[0][0].mmm > 0 or scores[0][0].yyy > 0 or scores[0][0].mm > 2 or scores[0][0].yy > 2:
             # we only care about the winning move.
-            #if depth == DEPTH_START:
-            #    print('***', scores[0])
             return [scores[0][1]]
 
-        # 3. pick a move looking forward
-        s0 = scores[0][0]
-        ix = 0
-        for i,(s,m) in enumerate(scores):
-            if s0 != s:
-                ix = i
-                break
-        nscores = scores[:ix]
-        random.shuffle(nscores)
-        scores = nscores + scores[ix:]
-        #if depth == DEPTH_START:
-        #    print('+++', scores)
+        if False:
+            # for the moment, no randomness for locating bugs
+            # 3. pick a move looking forward
+            s0 = scores[0][0]
+            ix = 0
+            for i,(s,m) in enumerate(scores):
+                if s0 != s:
+                    ix = i
+                    break
+            nscores = scores[:ix]
+            random.shuffle(nscores)
+            scores = nscores + scores[ix:]
 
         return [mv for _,mv in scores]
 
@@ -288,27 +289,26 @@ class TicTacToe:
         for ws in self.winners:
             if state.board[ws[0]] == state.board[ws[1]] == state.board[ws[2]] == state.board[ws[3]] != ' ':
                 return True
-        return ' ' not in state[0]  # Draw
+        return ' ' not in state.board  # Draw
 
     def evaluate_state(self, state):
         for ws in self.winners:
             if state.board[ws[0]] == state.board[ws[1]] == state.board[ws[2]] == state.board[ws[3]]:
+                # 'X' is user, 'O' is computer
                 if state.board[ws[0]] == 'X':
-                    return 1
+                    return -WIN_SCORE
                 elif state.board[ws[0]] == 'O':
-                    return -1
+                    return WIN_SCORE
         return 0  # Draw or ongoing game
 
-    def find_best_move(self):
+    def find_best_move(self, depth):
+        #print('find_best_move start: depth:', depth)
         score, move = minimax_alpha_beta(
-            self.state, DEPTH_START, -MAX_SCORE, MAX_SCORE, self.state.turn == 'X',
+            self.state, depth, -MAX_SCORE, MAX_SCORE, True,
             self.get_possible_moves, self.make_move, self.evaluate_state, self.is_terminal
         )
+        #print('find_best_move end: depth:', depth, 'score:', score, 'move:', move)
         return move
-
-    def find_first_move(self):
-        moves = self.get_possible_moves(self.state, DEPTH_START)
-        return moves[0]
 
 
 def main():
@@ -319,25 +319,20 @@ def main():
     print("The numbers at the start of each row are x.")
     print("You are 'X', computer is 'O'.")
 
-    def do_user_move():
+    flog = open('Log', 'a')
+    print('Start of Game', file=flog)
+
+    depth = 1
+    while True:
         while True:
             game.print_board(None)
             user_input = input("Your move (zyx): ").strip()
             coords = parse_input(user_input)
             if coords and game.is_valid_move(coords):
                 game.set_opponent_move(coords)
-                return
+                print('User Move:', user_input, coords, file=flog)
+                break
             print("Invalid move. Use three digits (0-3 each), e.g., '123' for layer 1, row 2, column 3.")
-
-    # avoid minmax for first move
-    do_user_move()
-    move = game.find_first_move()
-    game.update_state(move)
-    x, y, z = game.i2xyz(move)
-    print(f"Computer's move: {z}{y}{x} ({move})")
-
-    while True:
-        do_user_move()
 
         ws = game.check_win('X')
         if ws:
@@ -345,28 +340,32 @@ def main():
             game.print_board(ws)
             break
         if game.is_board_full():
-            print("It's a tie!")
+            print("It's a tie! At AAA")
             game.print_board(None)
             break
 
         # Computer's turn
-        move = game.find_best_move()
-        if move:
-            game.update_state(move)
-            x, y, z = game.i2xyz(move)
-            print(f"Computer's move: {z}{y}{x} ({move})")
+        move = game.find_best_move(depth)
+        if depth < DEPTH_MAX:
+            depth += depth
+        print('Computer Move:', move, file=flog)
+        if move is None:
+            print("It's a tie! At BBB")
+            game.print_board(None)
+            break
 
-            ws = game.check_win('O')
-            if ws:
-                print("Computer wins!")
-                game.print_board(ws)
-                break
-            if game.is_board_full():
-                print("It's a tie!")
-                game.print_board(None)
-                break
-        else:
-            print("It's a tie!")
+        game.update_state(move)
+        x, y, z = game.i2xyz(move)
+        print(f"Computer's move: {z}{y}{x} ({move})", file=flog)
+        print(f"Computer's move: {z}{y}{x} ({move})")
+
+        ws = game.check_win('O')
+        if ws:
+            print("Computer wins!")
+            game.print_board(ws)
+            break
+        if game.is_board_full():
+            print("It's a tie! At CCC")
             game.print_board(None)
             break
 
