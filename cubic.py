@@ -11,11 +11,11 @@ class Point(collections.namedtuple('Point', 'x y z')):
 
 State = collections.namedtuple('State', 'board turn')
 Score = collections.namedtuple('Score', 'mmm yyy mm yy m b y')
-ScoreSpread = collections.namedtuple('ScoreSpread', 'b m mm yy y')
+ScoreSpread = collections.namedtuple('ScoreSpread', 'b yy y m mm')
 
 WIN_SCORE = 50000
 MAX_SCORE = 50001
-DEPTH_MAX = 8
+DEPTH_MAX = 5
 
 score0 = Score(0, 0, 0, 0, 0, 0, 0)
 my_score = dict([
@@ -268,9 +268,13 @@ class TicTacToe:
             # we only care about the winning move.
             return [scores[0][1]]
 
+        # 3. use another ordering to spread marks around,
+        #    hoping to stumble on a win with depth search
+        scores = list(reversed(sorted((ScoreSpread(s.b, s.yy, s.y, s.m, s.mm), mv) for (s,mv) in scores)))
+
         if False:
             # for the moment, no randomness for locating bugs
-            # 3. pick a move looking forward
+            # 4. pick a move looking forward
             s0 = scores[0][0]
             ix = 0
             for i,(s,m) in enumerate(scores):
@@ -295,10 +299,11 @@ class TicTacToe:
         for ws in self.winners:
             if state.board[ws[0]] == state.board[ws[1]] == state.board[ws[2]] == state.board[ws[3]]:
                 # 'X' is user, 'O' is computer
+                # subtract spaces to find win in shortest number of moves
                 if state.board[ws[0]] == 'X':
-                    return -WIN_SCORE
+                    return -(WIN_SCORE - (64 - state.board.count(' ')))
                 elif state.board[ws[0]] == 'O':
-                    return WIN_SCORE
+                    return WIN_SCORE - (64 - state.board.count(' '))
         return 0  # Draw or ongoing game
 
     def find_best_move(self, depth):
@@ -326,7 +331,7 @@ def main():
     while True:
         while True:
             game.print_board(None)
-            user_input = input("Your move (zyx): ").strip()
+            user_input = input('Your move (zyx): ').strip()
             coords = parse_input(user_input)
             if coords and game.is_valid_move(coords):
                 game.set_opponent_move(coords)
@@ -347,7 +352,7 @@ def main():
         # Computer's turn
         move = game.find_best_move(depth)
         if depth < DEPTH_MAX:
-            depth += depth
+            depth += 1
         print('Computer Move:', move, file=flog)
         if move is None:
             print("It's a tie! At BBB")
