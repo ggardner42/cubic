@@ -78,34 +78,36 @@ def is_board_full(xs, os):
     """Check if the board is full."""
     return len(xs + os) == 64
 
-def print_board(xs, os, winner=None, isnumbering=True):
+def print_board(xs, os, markx='X', marko='O', winner=None, isnumbering=True):
     lastx = lasto = 100
     if xs:
         lastx = xs[-1]
     if os:
         lasto = os[-1]
 
-    # We alternate, first x, then o, so in mid-turn, x might be longer than o by 1.
-    pos = os + (None,) * (len(xs) - len(os))
-    xos = zip(xs, pos)
+    if len(xs) < len(os):
+        xs = xs + (None,) * (len(os) - len(xs))
+        os = os
+    elif len(os) < len(xs):
+        xs = xs
+        os = os + (None,) * (len(xs) - len(os))
+    xos = zip(xs, os)
 
     cells = ['   ']*64
-    for ii,(x,o) in enumerate(xos):
+    for i,(x,o) in enumerate(xos):
         # numbering for debugging statements
-        if isnumbering:
-            i = ii+1
-            if i < 10:
-                cells[x] = ' X%d' % i
-                if o is not None:
-                    cells[o] = ' O%d' % i
-            else:
-                cells[x] = 'X%d' % i
-                if o is not None:
-                    cells[o] = 'O%d' % i
-        else:
-            cells[x] = ' X '
-            if o is not None:
-                cells[o] = ' O '
+        def mk(i, m, mark):
+            if m is not None:
+                if isnumbering:
+                    ii = i+1
+                    if ii < 10:
+                        cells[m] = ' %s%d' % (mark, ii)
+                    else:
+                        cells[m] = '%s%d' % (mark, ii)
+                else:
+                    cells[m] = ' %s ' % mark
+        mk(i, x, markx)
+        mk(i, o, marko)
 
     # Print the 4x4x4 board with layers side by side, with specified indexing.
     print('          0                1                2                3')
@@ -133,98 +135,58 @@ def print_board(xs, os, winner=None, isnumbering=True):
             print('   '+ '  '.join(['+'.join(['---']*4)]*4))
     print()
 
-# XXX: TODO: Combine find_forced_win and find_opponent_forced_win
-def find_forced_win(xs, os, min_len):
-    #print('Entering', xs, os, min_len)
-    #print_board(xs, os)
+# y=you, m=me
+def find_forced_win(ys, ms, marky, markm, min_len, findfirst=False):
 
-    olen = len(os)
-    if olen >= min_len:
-        #print('Returning due to cutoff:', olen, min_len)
+    #print('Entering', ys, ms, marky, markm, min_len)
+    #print_board(ys, ms, marky, markm)
+
+    mlen = len(ms)
+    if mlen >= min_len:
+        #print('Returning due to cutoff:', mlen, min_len)
         return (min_len, None) # discard
 
     # we are O, and second to move, so this move may fill board
-    sxs = set(xs)
-    sos = set(os)
+    sys = set(ys)
+    sms = set(ms)
 
     # look if we have a win
     for sws in winners:
-        if len(sws & sos) == 3 and len(sws & sxs) == 0:
-            o = (sws-sos).pop()
-            #print('We have forced win:', sws, os, sws-sos)
-            #print_board(xs, os, winner=sws)
-            return (olen, o)
+        if len(sws & sms) == 3 and len(sws & sys) == 0:
+            m = (sws-sms).pop()
+            #print('We have forced win:', sws, ms, sws-sms)
+            #print_board(ys, ms, marky, markm, winner=sws)
+            return (mlen, m)
 
     # look if they have a win
     for sws in winners:
-        if len(sws & sxs) == 3 and len(sws & sos) == 0:
-            x = (sws-sxs).pop()
-            #print('Blocking forced win:', 100+olen, sws, xs, sws-sxs)
-            #print_board(xs, os, winner=sws)
+        if len(sws & sys) == 3 and len(sws & sms) == 0:
+            #print('Blocking forced win:', sws, ys, sws-sys)
+            #print_board(ys, ms, marky, markm, winner=sws)
             return (200, None)
 
     # exhaust all possible forced moves
     best_move = (min_len, None)
 
     for sws in winners:
-        if len(sws & sos) == 2 and len(sws & sxs) == 0:
-            c1, c2 = sws - sos
-            for i,(x,o) in enumerate(((c1,c2), (c2,c1))):
-                nxs = xs+(x,)
-                nos = os+(o,)
+        if len(sws & sms) == 2 and len(sws & sys) == 0:
+            c1, c2 = sws - sms
+            for i,(y,m) in enumerate(((c1,c2), (c2,c1))):
+                nys = ys+(y,)
+                nms = ms+(m,)
 
-                #print('Considering %d: X=%d, O=%d' % (i, x, o), best_move)
-                #print_board(nxs, nos)
+                #print('Considering %d: YOU=%d, ME=%d' % (i, y, m), best_move)
+                #print_board(nys, nms, marky, markm)
 
-                depth, move = find_forced_win(nxs, nos, best_move[0])
-                if depth < best_move[0]:
-                    #print('Got new best_move:', (depth, o), 'replacing:', best_move)
-                    best_move = (depth, o)
+                depth, move = find_forced_win(nys, nms, marky, markm, best_move[0])
+                if depth and depth < best_move[0]:
+                    #print('Got new best_move:', (depth, move), 'replacing:', best_move)
+                    best_move = (depth, m)
+                    if findfirst:
+                        return best_move
 
-    #print('Returning:', olen, best_move)
+    #print('Returning:', mlen, best_move)
     return best_move
-
-def find_opponent_forced_win(xs, os):
-    #print('Entering oppo', xs, os)
-    #print_board(xs, os)
-
-    # we are X, and first to move
-    sxs = set(xs)
-    sos = set(os)
-
-    # look if they have a win
-    for sws in winners:
-        if len(sws & sxs) == 3 and len(sws & sos) == 0:
-            x = (sws-sxs).pop()
-            #print('We have oppo forced win:', sws, xs, sws-sxs)
-            #print_board(xs, os, winner=sws)
-            return x
-
-    # look if we have a win
-    for sws in winners:
-        if len(sws & sos) == 3 and len(sws & sxs) == 0:
-            o = (sws-sos).pop()
-            #print('Blocking oppo forced win:', sws, os, sws-sos)
-            #print_board(xs, os, winner=sws)
-            return None
-
-    for sws in winners:
-        if len(sws & sxs) == 2 and len(sws & sos) == 0:
-            c1, c2 = sws - sxs
-            for x,o in ((c1,c2), (c2,c1)):
-                nxs = xs+(x,)
-                nos = os+(o,)
-
-                #print('Considering oppo: X=%d, O=%d' % (x, o))
-                #print_board(nxs, nos)
-
-                move = find_opponent_forced_win(nxs, nos)
-                # return first found
-                if move is not None:
-                    return x
-
-    #print('Returning opp None')
-    return None
 
 
 def find_best_move(xs, os):
@@ -233,14 +195,15 @@ def find_best_move(xs, os):
     #print('find_best_move:', xs, os)
     # find forced win, or block opponent forced win
     min_len = 200 # 200 represents no forced win, 100+depth represents blocking opponent win, else forced win in this many moves
-    depth, move = find_forced_win(xs, os, min_len)
+    #beg = time.perf_counter()
+    depth, move = find_forced_win(xs, os, 'X', 'O', min_len)
+    #end = time.perf_counter()
+    #diff = end - beg
+    #print("best for computer:", (depth, move), f"(elapsed time: {diff:.9f} seconds)")
     if move is not None:
         #print('Forced win in', depth-len(os), 'moves')
         #print_board(xs, os)
         return move
-
-    ## see if next move leads to forced win
-    #best_move = (min_len, None)
 
     # no forced wins in next move.
     # find promising move.
@@ -298,7 +261,12 @@ def find_best_move(xs, os):
             bestc = c
 
     # now see if X has a forced win, given this move
-    move = find_opponent_forced_win(xs, os+(bestc,))
+    #print('find_best_move for user:', xs, os)
+    #beg = time.perf_counter()
+    depth, move = find_forced_win(os+(bestc,), xs, 'O', 'X', min_len, findfirst=True)
+    #end = time.perf_counter()
+    #diff = end - beg
+    #print("best for user:", (depth, move), f"(elapsed time: {diff:.9f} seconds)")
     if move is not None:
         #print("Blocking user's forced win")
         return move
