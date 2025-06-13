@@ -34,16 +34,10 @@ winners  = (
         )
 winners = tuple(set(ws) for ws in winners)
 
-ordered_cells = (
-        # corners
-         0,  3, 12, 15, 48, 51, 60, 63,
-        # inners
-        21, 22, 25, 26, 37, 38, 41, 42,
-        # edges
-         1,  2,  4,  7,  8, 11, 13, 14, 16, 19, 28, 31, 32, 35, 44, 47, 49, 50, 52, 55, 56, 59, 61, 62,
-        # surfaces
-         5,  6,  9, 10, 17, 18, 20, 23, 24, 27, 29, 30, 33, 34, 36, 39, 40, 43, 45, 46, 53, 54, 57, 58,
-        )
+corners = ( 0,  3, 12, 15, 48, 51, 60, 63)
+inners  = (21, 22, 25, 26, 37, 38, 41, 42)
+edges   = ( 1,  2,  4,  7,  8, 11, 13, 14, 16, 19, 28, 31, 32, 35, 44, 47, 49, 50, 52, 55, 56, 59, 61, 62)
+surface = ( 5,  6,  9, 10, 17, 18, 20, 23, 24, 27, 29, 30, 33, 34, 36, 39, 40, 43, 45, 46, 53, 54, 57, 58)
 
 def parse_input(user_input):
     """Parse three-digit input into z, y, x coordinates."""
@@ -190,7 +184,7 @@ def find_forced_win(ys, ms, marky, markm, min_len, findfirst=False):
 
 
 def find_best_move(xs, os):
-    global ordered_cells, winners
+    global winners
 
     #print('find_best_move:', xs, os)
     # find forced win, or block opponent forced win
@@ -210,11 +204,6 @@ def find_best_move(xs, os):
     sxs = set(xs)
     sos = set(os)
 
-    # remove used cells, but keep order
-    #print('ordered_cells before:', ordered_cells)
-    ordered_cells = tuple(c for c in ordered_cells if c not in (sxs|sos))
-    #print('ordered_cells  after:', ordered_cells)
-
     # remove used winners
     def ispure(ws, sxs, sos):
         if (ws & sxs) and (ws & sos):
@@ -231,34 +220,43 @@ def find_best_move(xs, os):
     # [2] == number of wins with 2 O
     # [3] == number with 2 Xs
     # [4] == number with 1 Xs.
-    bestv = (-1, -1, -1, -1, -1)
-    bestc = ordered_cells[0]
-    for c in ordered_cells:
-        tbestv = [0, 0, 0, 0, 0]
-        for sws in winners:
-            if c not in sws:
+    def best(cells):
+        bestv = (-1, -1, -1, -1, -1)
+        bc = None
+        for c in cells:
+            if c in (sxs|sos):
                 continue
+            tbestv = [0, 0, 0, 0, 0]
+            for sws in winners:
+                if c not in sws:
+                    continue
 
-            xcnt = len(sws & sxs)
-            ocnt = len(sws & sos)
-            if xcnt == 0:
-                if ocnt == 0:
-                    tbestv[0] += 1
-                elif ocnt == 1:
-                    tbestv[1] += 1
+                xcnt = len(sws & sxs)
+                ocnt = len(sws & sos)
+                if xcnt == 0:
+                    if ocnt == 0:
+                        tbestv[0] += 1
+                    elif ocnt == 1:
+                        tbestv[1] += 1
+                    else:
+                        # we would have seen OOOB earlier
+                        tbestv[2] += 1
+                # we got rid of both Xs and Os, so must be ocnt == 0
+                elif xcnt == 2:
+                    tbestv[3] += 1
                 else:
-                    # we would have seen OOOB earlier
-                    tbestv[2] += 1
-            # we got rid of both Xs and Os, so must be ocnt == 0
-            elif xcnt == 2:
-                tbestv[3] += 1
-            else:
-                tbestv[4] += 1
-        tbestv = tuple(tbestv)
-        #print('tbestv:', tbestv, c, '(', bestv, bestc, ')')
-        if bestv < tbestv:
-            bestv = tbestv
-            bestc = c
+                    tbestv[4] += 1
+            tbestv = tuple(tbestv)
+            print('tbestv:', tbestv, c, '(', bestv, bc, ')', cells)
+            if bestv < tbestv:
+                bestv = tbestv
+                bc = c
+        return bc
+
+    for cs in (corners, inners, edges, surface):
+        bestc = best(cs)
+        if bestc is not None:
+            break
 
     # now see if X has a forced win, given this move
     #print('find_best_move for user:', xs, os)
