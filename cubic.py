@@ -1,37 +1,49 @@
-import collections
-import random
+import time
 
-class Point(collections.namedtuple('Point', 'x y z')):
-    __slots__ = ()
+# A "winner" is a set of 4 points that make up 4 in a row.
+#
+# The general strategy is to look for a forced win, exhausting all possible winners that have 2 Os and 2 blanks,
+# which hopefully leads to a point where I have two or more 3 Os and a blank (with the blank in common)
+#
+# The program first looks to see if the computer has a forced win.
+# If not, it picks a cell that looks promising,
+# then checks to see if the opponent has a forced win.
+# If the opponent has a forced win, then the computer moves to block.
+# The computer continues to pick promising cells until it stumbles on a forced win.
 
-    def __str__(self):
-        return '%d%d%d' % (self.z, self.y, self.x)
-    def __repr__(self):
-        return str(self)
+winners  = (
+        ( 0,  1,  2,  3), ( 0,  4,  8, 12), ( 0,  5, 10, 15), ( 0, 16, 32, 48),
+        ( 0, 17, 34, 51), ( 0, 20, 40, 60), ( 0, 21, 42, 63), ( 1,  5,  9, 13),
+        ( 1, 17, 33, 49), ( 1, 21, 41, 61), ( 2,  6, 10, 14), ( 2, 18, 34, 50),
+        ( 2, 22, 42, 62), ( 3,  6,  9, 12), ( 3,  7, 11, 15), ( 3, 18, 33, 48),
+        ( 3, 19, 35, 51), ( 3, 22, 41, 60), ( 3, 23, 43, 63), ( 4,  5,  6,  7),
+        ( 4, 20, 36, 52), ( 4, 21, 38, 55), ( 5, 21, 37, 53), ( 6, 22, 38, 54),
+        ( 7, 22, 37, 52), ( 7, 23, 39, 55), ( 8,  9, 10, 11), ( 8, 24, 40, 56),
+        ( 8, 25, 42, 59), ( 9, 25, 41, 57), (10, 26, 42, 58), (11, 26, 41, 56),
+        (11, 27, 43, 59), (12, 13, 14, 15), (12, 24, 36, 48), (12, 25, 38, 51),
+        (12, 28, 44, 60), (12, 29, 46, 63), (13, 25, 37, 49), (13, 29, 45, 61),
+        (14, 26, 38, 50), (14, 30, 46, 62), (15, 26, 37, 48), (15, 27, 39, 51),
+        (15, 30, 45, 60), (15, 31, 47, 63), (16, 17, 18, 19), (16, 20, 24, 28),
+        (16, 21, 26, 31), (17, 21, 25, 29), (18, 22, 26, 30), (19, 22, 25, 28),
+        (19, 23, 27, 31), (20, 21, 22, 23), (24, 25, 26, 27), (28, 29, 30, 31),
+        (32, 33, 34, 35), (32, 36, 40, 44), (32, 37, 42, 47), (33, 37, 41, 45),
+        (34, 38, 42, 46), (35, 38, 41, 44), (35, 39, 43, 47), (36, 37, 38, 39),
+        (40, 41, 42, 43), (44, 45, 46, 47), (48, 49, 50, 51), (48, 52, 56, 60),
+        (48, 53, 58, 63), (49, 53, 57, 61), (50, 54, 58, 62), (51, 54, 57, 60),
+        (51, 55, 59, 63), (52, 53, 54, 55), (56, 57, 58, 59), (60, 61, 62, 63)
+        )
+winners = tuple(set(ws) for ws in winners)
 
-State = collections.namedtuple('State', 'board turn')
-Score = collections.namedtuple('Score', 'mmm yyy mm yy m b y')
-ScoreSpread = collections.namedtuple('ScoreSpread', 'b yy y m mm')
-
-WIN_SCORE = 50000
-MAX_SCORE = 50001
-DEPTH_MAX = 5
-
-score0 = Score(0, 0, 0, 0, 0, 0, 0)
-my_score = dict([
-    ((0, 0), Score(0, 0, 0, 0, 0, 1, 0)), # b=1
-    ((0, 1), Score(0, 0, 0, 0, 0, 0, 1)), # y=1
-    ((0, 2), Score(0, 0, 0, 1, 0, 0, 0)), # yy=1
-    ((0, 3), Score(0, 1, 0, 0, 0, 0, 0)), # yyy=1
-    ((1, 0), Score(0, 0, 0, 0, 1, 0, 0)), # m=1
-    ((2, 0), Score(0, 0, 1, 0, 0, 0, 0)), # mm=1
-    ((3, 0), Score(1, 0, 0, 0, 0, 0, 0)), # mmm=1
-    ])
-
-def add_my_score(ms, ys, score):
-    if ms > 0 and ys > 0:
-        return score
-    return Score(*[x+y for x,y in zip(my_score[(ms, ys)], score)])
+ordered_cells = (
+        # corners
+         0,  3, 12, 15, 48, 51, 60, 63,
+        # inners
+        21, 22, 25, 26, 37, 38, 41, 42,
+        # edges
+         1,  2,  4,  7,  8, 11, 13, 14, 16, 19, 28, 31, 32, 35, 44, 47, 49, 50, 52, 55, 56, 59, 61, 62,
+        # surfaces
+         5,  6,  9, 10, 17, 18, 20, 23, 24, 27, 29, 30, 33, 34, 36, 39, 40, 43, 45, 46, 53, 54, 57, 58,
+        )
 
 def parse_input(user_input):
     """Parse three-digit input into z, y, x coordinates."""
@@ -45,275 +57,252 @@ def parse_input(user_input):
     except ValueError:
         return None
 
+def zyx2c(z, y, x):
+    return x * 16 + y * 4 + z
 
-def minimax_alpha_beta(state, depth, alpha, beta, maximizing_player,
-                       get_possible_moves, make_move, evaluate_state, is_terminal):
-    """
-    minimax algorithm with alpha-beta pruning.
+def c2xyz(c):
+    z = c & 3
+    y = (c >> 2) & 3
+    x = (c >> 4) & 3
+    return (x, y, z)
 
-    Args:
-        state: Current game state
-        depth: Maximum search depth (0 = leaf node)
-        alpha: Best value maximizing player can guarantee
-        beta: Best value minimizing player can guarantee
-        maximizing_player: True if current player is maximizing, False if minimizing
-        get_possible_moves: Function that returns list of possible moves from state
-        make_move: Function that returns new state after applying move
-        evaluate_state: Function that returns numeric evaluation of state
-        is_terminal: Function that returns True if state is terminal (game over)
+def check_win(c, cs):
+    """Check if the given player has won."""
+    scs = set(cs)
+    for sws in winners:
+        if sws <= scs:
+            return sws
+    return None
 
-    Returns:
-        Tuple of (best_score, best_move)
-    """
+def is_board_full(xs, os):
+    """Check if the board is full."""
+    return len(xs + os) == 64
 
-    #print('===================================')
-    #print(depth, alpha, beta, maximizing_player)
-    #game.print_board(None, state)
+def print_board(xs, os, winner=None, isnumbering=True):
+    lastx = lasto = 100
+    if xs:
+        lastx = xs[-1]
+    if os:
+        lasto = os[-1]
 
-    # Base cases
-    if depth == 0 or is_terminal(state):
-        #es = evaluate_state(state)
-        #print('TERMINAL:', depth, es, state)
-        #game.print_board(None, state)
-        #return es, None
-        return evaluate_state(state), None
+    # We alternate, first x, then o, so in mid-turn, x might be longer than o by 1.
+    pos = os + (None,) * (len(xs) - len(os))
+    xos = zip(xs, pos)
 
-    possible_moves = get_possible_moves(state)
-    #print('enter minimax: start: depth:', depth, 'possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves])
+    cells = ['   ']*64
+    for ii,(x,o) in enumerate(xos):
+        # numbering for debugging statements
+        if isnumbering:
+            i = ii+1
+            if i < 10:
+                cells[x] = ' X%d' % i
+                if o is not None:
+                    cells[o] = ' O%d' % i
+            else:
+                cells[x] = 'X%d' % i
+                if o is not None:
+                    cells[o] = 'O%d' % i
+        else:
+            cells[x] = ' X '
+            if o is not None:
+                cells[o] = ' O '
 
-    if maximizing_player:
-        max_eval = -MAX_SCORE
-        best_move = None
+    # Print the 4x4x4 board with layers side by side, with specified indexing.
+    print('          0                1                2                3')
+    print('    0   1   2   3    0   1   2   3    0   1   2   3    0   1   2   3')
 
-        for move in possible_moves:
-            #print('consider max move: depth:', depth, 'move:', move, 'possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves])
-            new_state = make_move(state, move)
-            eval_score, ss = minimax_alpha_beta(new_state, depth - 1, alpha, beta, False,
-                                               get_possible_moves, make_move, evaluate_state, is_terminal)
-            #print('MAXING: depth:', depth, 'move:', move, 'eval_score:', eval_score, 'ss:', ss)
+    # Board rows with row indices
+    for x in range(4):
+        row_parts = [f"{x}"]  # Start with row index
+        for z in range(4):  # For each layer
+            row = []
+            for y in range(4):
+                i = zyx2c(z, y, x)
+                cell = cells[i]
+                if winner and i in winner:
+                    cell = f"\033[33m{cell}\033[0m"  # Some color for winnng user
+                else:
+                    if i == lastx:
+                        cell = f"\033[32m{cell}\033[0m"  # Green for user
+                    elif i == lasto:
+                        cell = f"\033[31m{cell}\033[0m"  # Red for computer
+                row.append(cell)  # Center cell content in 4-char space
+            row_parts.append("|".join(row))
+        print("  ".join(row_parts))
+        if x < 3:
+            print('   '+ '  '.join(['+'.join(['---']*4)]*4))
+    print()
 
-            if eval_score > max_eval:
-                max_eval = eval_score
-                best_move = move
+# XXX: TODO: Combine find_forced_win and find_opponent_forced_win
+def find_forced_win(xs, os, min_len):
+    #print('Entering', xs, os, min_len)
+    #print_board(xs, os)
 
-            alpha = max(alpha, eval_score)
+    olen = len(os)
+    if olen >= min_len:
+        #print('Returning due to cutoff:', olen, min_len)
+        return (min_len, None) # discard
 
-            # Alpha-beta pruning
-            if beta <= alpha:
-                break  # Beta cutoff
+    # we are O, and second to move, so this move may fill board
+    sxs = set(xs)
+    sos = set(os)
 
-        #print('return max: max_eval:', max_eval, 'best_move:', best_move)
-        return max_eval, best_move
+    # look if we have a win
+    for sws in winners:
+        if len(sws & sos) == 3 and len(sws & sxs) == 0:
+            o = (sws-sos).pop()
+            #print('We have forced win:', sws, os, sws-sos)
+            #print_board(xs, os, winner=sws)
+            return (olen, o)
 
-    else:  # Minimizing player
-        min_eval = MAX_SCORE
-        best_move = None
+    # look if they have a win
+    for sws in winners:
+        if len(sws & sxs) == 3 and len(sws & sos) == 0:
+            x = (sws-sxs).pop()
+            #print('Blocking forced win:', 100+olen, sws, xs, sws-sxs)
+            #print_board(xs, os, winner=sws)
+            return (200, None)
 
-        for move in possible_moves:
-            #print('consider min move: depth:', depth, 'move:', move, 'possible_moves:', [Point(*game.i2xyz(i)) for i in possible_moves])
-            new_state = make_move(state, move)
-            eval_score, ss = minimax_alpha_beta(new_state, depth - 1, alpha, beta, True,
-                                               get_possible_moves, make_move, evaluate_state, is_terminal)
-            #print('MINING: depth:', depth, 'move:', move, 'eval_score:', eval_score, 'ss:', ss)
+    # exhaust all possible forced moves
+    best_move = (min_len, None)
 
-            if eval_score < min_eval:
-                min_eval = eval_score
-                best_move = move
+    for sws in winners:
+        if len(sws & sos) == 2 and len(sws & sxs) == 0:
+            c1, c2 = sws - sos
+            for i,(x,o) in enumerate(((c1,c2), (c2,c1))):
+                nxs = xs+(x,)
+                nos = os+(o,)
 
-            beta = min(beta, eval_score)
+                #print('Considering %d: X=%d, O=%d' % (i, x, o), best_move)
+                #print_board(nxs, nos)
 
-            # Alpha-beta pruning
-            if beta <= alpha:
-                break  # Alpha cutoff
+                depth, move = find_forced_win(nxs, nos, best_move[0])
+                if depth < best_move[0]:
+                    #print('Got new best_move:', (depth, o), 'replacing:', best_move)
+                    best_move = (depth, o)
 
-        #print('return min: min_eval:', min_eval, 'best_move:', best_move)
-        return min_eval, best_move
+    #print('Returning:', olen, best_move)
+    return best_move
 
+def find_opponent_forced_win(xs, os):
+    #print('Entering oppo', xs, os)
+    #print_board(xs, os)
 
-class TicTacToe:
-    def __init__(self):
-        # mapping 4x4x4 onto single array. calculated from cubic_helper.py
-        self.winners = (
-                ( 0,  1,  2,  3), ( 0,  4,  8, 12), ( 0,  5, 10, 15), ( 0, 16, 32, 48),
-                ( 0, 17, 34, 51), ( 0, 20, 40, 60), ( 0, 21, 42, 63), ( 1,  5,  9, 13),
-                ( 1, 17, 33, 49), ( 1, 21, 41, 61), ( 2,  6, 10, 14), ( 2, 18, 34, 50),
-                ( 2, 22, 42, 62), ( 3,  6,  9, 12), ( 3,  7, 11, 15), ( 3, 18, 33, 48),
-                ( 3, 19, 35, 51), ( 3, 22, 41, 60), ( 3, 23, 43, 63), ( 4,  5,  6,  7),
-                ( 4, 20, 36, 52), ( 4, 21, 38, 55), ( 5, 21, 37, 53), ( 6, 22, 38, 54),
-                ( 7, 22, 37, 52), ( 7, 23, 39, 55), ( 8,  9, 10, 11), ( 8, 24, 40, 56),
-                ( 8, 25, 42, 59), ( 9, 25, 41, 57), (10, 26, 42, 58), (11, 26, 41, 56),
-                (11, 27, 43, 59), (12, 13, 14, 15), (12, 24, 36, 48), (12, 25, 38, 51),
-                (12, 28, 44, 60), (12, 29, 46, 63), (13, 25, 37, 49), (13, 29, 45, 61),
-                (14, 26, 38, 50), (14, 30, 46, 62), (15, 26, 37, 48), (15, 27, 39, 51),
-                (15, 30, 45, 60), (15, 31, 47, 63), (16, 17, 18, 19), (16, 20, 24, 28),
-                (16, 21, 26, 31), (17, 21, 25, 29), (18, 22, 26, 30), (19, 22, 25, 28),
-                (19, 23, 27, 31), (20, 21, 22, 23), (24, 25, 26, 27), (28, 29, 30, 31),
-                (32, 33, 34, 35), (32, 36, 40, 44), (32, 37, 42, 47), (33, 37, 41, 45),
-                (34, 38, 42, 46), (35, 38, 41, 44), (35, 39, 43, 47), (36, 37, 38, 39),
-                (40, 41, 42, 43), (44, 45, 46, 47), (48, 49, 50, 51), (48, 52, 56, 60),
-                (48, 53, 58, 63), (49, 53, 57, 61), (50, 54, 58, 62), (51, 54, 57, 60),
-                (51, 55, 59, 63), (52, 53, 54, 55), (56, 57, 58, 59), (60, 61, 62, 63)
-                )
+    # we are X, and first to move
+    sxs = set(xs)
+    sos = set(os)
 
-        self.state = State(' '*64, 'X')
-        self.last_user_move = None
-        self.last_computer_move = None
+    # look if they have a win
+    for sws in winners:
+        if len(sws & sxs) == 3 and len(sws & sos) == 0:
+            x = (sws-sxs).pop()
+            #print('We have oppo forced win:', sws, xs, sws-sxs)
+            #print_board(xs, os, winner=sws)
+            return x
 
-    def i2xyz(self, i):
-        z = i & 3
-        y = (i >> 2) & 3
-        x = (i >> 4) & 3
-        return (x, y, z)
+    # look if we have a win
+    for sws in winners:
+        if len(sws & sos) == 3 and len(sws & sxs) == 0:
+            o = (sws-sos).pop()
+            #print('Blocking oppo forced win:', sws, os, sws-sos)
+            #print_board(xs, os, winner=sws)
+            return None
 
-    def zyx2i(self, pt):
-        z, y, x = pt
-        return x * 16 + y * 4 + z
+    for sws in winners:
+        if len(sws & sxs) == 2 and len(sws & sos) == 0:
+            c1, c2 = sws - sxs
+            for x,o in ((c1,c2), (c2,c1)):
+                nxs = xs+(x,)
+                nos = os+(o,)
 
-    def make_move(self, state, cell):
-        nturn = 'X' if state.turn == 'O' else 'O'
-        nstate = State(state.board[:cell] + state.turn + state.board[cell+1:], nturn)
-        return nstate
+                #print('Considering oppo: X=%d, O=%d' % (x, o))
+                #print_board(nxs, nos)
 
-    def update_state(self, cell):
-        self.state = self.make_move(self.state, cell)
-        self.last_computer_move = cell
+                move = find_opponent_forced_win(nxs, nos)
+                # return first found
+                if move is not None:
+                    return x
 
-    def set_opponent_move(self, coords):
-        cell = self.zyx2i(coords)
-        self.state = self.make_move(self.state, cell)
-        self.last_user_move = cell
-
-    def check_win(self, player):
-        """Check if the given player has won."""
-        for ws in sorted(self.winners):
-            if all(self.state[0][w] == player for w in ws):
-                #self.print_board(ws)
-                return ws
-        return None
-
-    def is_board_full(self):
-        """Check if the board is full."""
-        cnt = sum(1 for c in self.state.board if c == ' ')
-        return cnt == 0
-
-    def print_board(self, winner=None, state=None):
-        """Print the 4x4x4 board with layers side by side, with specified indexing."""
-        if state == None:
-            state = self.state
-
-        print('          0                1                2                3')
-        print('    0   1   2   3    0   1   2   3    0   1   2   3    0   1   2   3')
-
-        # Board rows with row indices
-        for x in range(4):
-            row_parts = [f"{x}"]  # Start with row index
-            for z in range(4):  # For each layer
-                row = []
-                for y in range(4):
-                    i = self.zyx2i((z, y, x))
-                    cell = state.board[i]
-                    if winner and i in winner:
-                        cell = f" \033[33m{cell}\033[0m "  # Some color for winnng user
-                    else:
-                        if i == self.last_user_move:
-                            cell = f" \033[32m{cell}\033[0m "  # Green for user
-                        elif i == self.last_computer_move:
-                            cell = f" \033[31m{cell}\033[0m "  # Red for computer
-                        else:
-                            cell = ' '+cell+' '
-                    row.append(cell)  # Center cell content in 4-char space
-                row_parts.append("|".join(row))
-            print("  ".join(row_parts))
-            if x < 3:
-                print('   '+ '  '.join(['+'.join(['---']*4)]*4))
-        print()
-
-    def is_valid_move(self, coords):
-        """Check if the move is valid."""
-        z, y, x = coords
-        i = self.zyx2i(coords)
-        return 0 <= z < 4 and 0 <= y < 4 and 0 <= x < 4 and self.state.board[i] == ' '
-
-    def get_possible_moves(self, state):
-        """Return list of empty cell coordinates, ordered by "best" move first."""
-        mvs = [i for i,cell in enumerate(state.board) if cell == ' ']
-
-        # check for done
-        if not mvs:
-            return mvs
-
-        # order the moves to help minmax find something good early
-        # 1. score the moves, sorted according to immediate win
-        scores = []
-        for mv in mvs:
-            score = score0
-            for ws in self.winners:
-                if mv in ws:
-                    ms = ys = 0
-                    for w in ws:
-                        if state.board[w] == state.turn:
-                            ms += 1
-                        elif state.board[w] != ' ':
-                            ys += 1
-                    score = add_my_score(ms, ys, score)
-            scores.append((score, mv))
-        scores = list(reversed(sorted(scores)))
-
-        # 2. look for (almost) immediate wins.
-        # if mmm > 0, that means we can win with this move.
-        # if yyy > 0, that means we must block opponent with this move.
-        # if mm > 2, that means we can win in two moves (we place in this spot, and we forked two winners)
-        # if yy > 2, that means we must block the user from forcing a win.
-        if scores[0][0].mmm > 0 or scores[0][0].yyy > 0 or scores[0][0].mm > 2 or scores[0][0].yy > 2:
-            # we only care about the winning move.
-            return [scores[0][1]]
-
-        # 3. use another ordering to spread marks around,
-        #    hoping to stumble on a win with depth search
-        scores = list(reversed(sorted((ScoreSpread(s.b, s.yy, s.y, s.m, s.mm), mv) for (s,mv) in scores)))
-
-        if False:
-            # for the moment, no randomness for locating bugs
-            # 4. pick a move looking forward
-            s0 = scores[0][0]
-            ix = 0
-            for i,(s,m) in enumerate(scores):
-                if s0 != s:
-                    ix = i
-                    break
-            nscores = scores[:ix]
-            random.shuffle(nscores)
-            scores = nscores + scores[ix:]
-
-        return [mv for _,mv in scores]
+    #print('Returning opp None')
+    return None
 
 
-    def is_terminal(self, state):
-        # Check for winner or draw
-        for ws in self.winners:
-            if state.board[ws[0]] == state.board[ws[1]] == state.board[ws[2]] == state.board[ws[3]] != ' ':
-                return True
-        return ' ' not in state.board  # Draw
+def find_best_move(xs, os):
+    global ordered_cells, winners
 
-    def evaluate_state(self, state):
-        for ws in self.winners:
-            if state.board[ws[0]] == state.board[ws[1]] == state.board[ws[2]] == state.board[ws[3]]:
-                # 'X' is user, 'O' is computer
-                # subtract spaces to find win in shortest number of moves
-                if state.board[ws[0]] == 'X':
-                    return -(WIN_SCORE - (64 - state.board.count(' ')))
-                elif state.board[ws[0]] == 'O':
-                    return WIN_SCORE - (64 - state.board.count(' '))
-        return 0  # Draw or ongoing game
-
-    def find_best_move(self, depth):
-        #print('find_best_move start: depth:', depth)
-        score, move = minimax_alpha_beta(
-            self.state, depth, -MAX_SCORE, MAX_SCORE, True,
-            self.get_possible_moves, self.make_move, self.evaluate_state, self.is_terminal
-        )
-        #print('find_best_move end: depth:', depth, 'score:', score, 'move:', move)
+    #print('find_best_move:', xs, os)
+    # find forced win, or block opponent forced win
+    min_len = 200 # 200 represents no forced win, 100+depth represents blocking opponent win, else forced win in this many moves
+    depth, move = find_forced_win(xs, os, min_len)
+    if move is not None:
+        #print('Forced win in', depth-len(os), 'moves')
+        #print_board(xs, os)
         return move
+
+    ## see if next move leads to forced win
+    #best_move = (min_len, None)
+
+    # no forced wins in next move.
+    # find promising move.
+    sxs = set(xs)
+    sos = set(os)
+
+    # remove used cells, but keep order
+    #print('ordered_cells before:', ordered_cells)
+    ordered_cells = tuple(c for c in ordered_cells if c not in (sxs|sos))
+    #print('ordered_cells  after:', ordered_cells)
+
+    # remove used winners
+    def ispure(ws, sxs, sos):
+        if (ws & sxs) and (ws & sos):
+            #print('Removing winner:', ws)
+            return False
+        return True
+    #print('winners before:', winners)
+    winners = tuple(ws for ws in winners if ispure(ws, sxs, sos))
+    #print('winners  after:', winners)
+
+    # evaluate next move
+    # [0] == number of wins with 0 X and O
+    # [1] == number of wins with 1 O
+    # [2] == number of wins with 2 O
+    # [3] == number with 2 Xs
+    # [4] == number with 1 Xs.
+    bestv = (-1, -1, -1, -1, -1)
+    bestc = ordered_cells[0]
+    for c in ordered_cells:
+        tbestv = [0, 0, 0, 0, 0]
+        for sws in winners:
+            if c not in sws:
+                continue
+
+            xcnt = len(sws & sxs)
+            ocnt = len(sws & sos)
+            if xcnt == 0:
+                if ocnt == 0:
+                    tbestv[0] += 1
+                elif ocnt == 1:
+                    tbestv[1] += 1
+                else:
+                    # we would have seen OOOB earlier
+                    tbestv[2] += 1
+            # we got rid of both Xs and Os, so must be ocnt == 0
+            elif xcnt == 2:
+                tbestv[3] += 1
+            else:
+                tbestv[4] += 1
+        tbestv = tuple(tbestv)
+        #print('tbestv:', tbestv, c, '(', bestv, bestc, ')')
+        if bestv < tbestv:
+            bestv = tbestv
+            bestc = c
+
+    # now see if X has a forced win, given this move
+    move = find_opponent_forced_win(xs, os+(bestc,))
+    if move is not None:
+        #print("Blocking user's forced win")
+        return move
+    return bestc
 
 
 def main():
@@ -324,56 +313,63 @@ def main():
     print("The numbers at the start of each row are x.")
     print("You are 'X', computer is 'O'.")
 
-    flog = open('Log', 'a')
-    print('Start of Game', file=flog)
+    #print('Start of Game', file=flog)
 
-    depth = 1
+    # All the Xs and all the Os
+    xs = tuple()
+    os = tuple()
+
     while True:
+        # get and validate user move
         while True:
-            game.print_board(None)
+            print_board(xs, os, isnumbering=False)
             user_input = input('Your move (zyx): ').strip()
             coords = parse_input(user_input)
-            if coords and game.is_valid_move(coords):
-                game.set_opponent_move(coords)
-                print('User Move:', user_input, coords, file=flog)
-                break
-            print("Invalid move. Use three digits (0-3 each), e.g., '123' for layer 1, row 2, column 3.")
+            if coords is None:
+                print("Invalid move. Use three digits (0-3 each), e.g., '123' for plane 1, column 2, row 3.")
+                continue
+            z,y,x = coords
+            cx = zyx2c(z,y,x)
+            if cx in (xs+os):
+                print("Invalid move.", user_input, "is already taken.")
+                continue
+            break
 
-        ws = game.check_win('X')
+        # add opponent move to xs
+        xs = xs+(cx,)
+        #print('User Move:', user_input, coords, cx, flush=True)
+        #print('User Move:', user_input, coords, cx, file=flog)
+
+        ws = check_win(cx, xs)
         if ws:
             print("You win!")
-            game.print_board(ws)
+            print_board(xs, os, winner=ws, isnumbering=False)
             break
-        if game.is_board_full():
+        if is_board_full(xs, os):
             print("It's a tie! At AAA")
-            game.print_board(None)
+            print_board(xs, os, isnumbering=False)
             break
 
         # Computer's turn
-        move = game.find_best_move(depth)
-        if depth < DEPTH_MAX:
-            depth += 1
-        print('Computer Move:', move, file=flog)
-        if move is None:
-            print("It's a tie! At BBB")
-            game.print_board(None)
-            break
+        beg = time.perf_counter()
+        co = find_best_move(xs, os)
+        end = time.perf_counter()
+        diff = end - beg
+        os = os+(co,)
+        x, y, z = c2xyz(co)
+        print(f"Computer's move: {z}{y}{x} (elapsed time: {diff:.9f} seconds)")
+        #print(f"Computer's move: {z}{y}{x} ({co}) (elapsed time: {diff:.9f} seconds)", file=flog, flush=True)
 
-        game.update_state(move)
-        x, y, z = game.i2xyz(move)
-        print(f"Computer's move: {z}{y}{x} ({move})", file=flog)
-        print(f"Computer's move: {z}{y}{x} ({move})")
-
-        ws = game.check_win('O')
+        ws = check_win(co, os)
         if ws:
             print("Computer wins!")
-            game.print_board(ws)
+            print_board(xs, os, winner=ws, isnumbering=False)
             break
-        if game.is_board_full():
-            print("It's a tie! At CCC")
-            game.print_board(None)
+        if is_board_full(xs, os):
+            print("It's a tie! At BBB")
+            print_board(xs, os, isnumbering=False)
             break
 
 if __name__ == "__main__":
-    game = TicTacToe()
+    #flog = open('Log', 'a')
     main()

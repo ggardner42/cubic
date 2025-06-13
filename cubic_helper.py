@@ -2,65 +2,86 @@ import collections
 import itertools
 
 State = collections.namedtuple('State', 'board turn')
-class Triple(collections.namedtuple('Triple', 'ws')):
-    __slots__ = ()
 
-    def __str__(self):
-        return '(%2d, %2d, %2d)' % (self.ws[0], self.ws[1], self.ws[2])
-    def __repr__(self):
-        return str(self)
+# taken from cubic
+def zyx2c(z, y, x):
+    return x * 16 + y * 4 + z
 
+def print_board(xs, os, winner=None, isnumbering=True):
+    lastx = lasto = 100
+    if xs:
+        lastx = xs[-1]
+    if os:
+        lasto = os[-1]
 
-# Check the winners visually
-# part of class from cubic.py
-class TicTacToe:
-    def __init__(self):
-        self.state = State(' '*64, 'X')
-        self.last_user_move = None
-        self.last_computer_move = None
+    # We alternate, first x, then o, so in mid-turn, x might be longer than o by 1.
+    pos = os + (None,) * (len(xs) - len(os))
+    xos = zip(xs, pos)
 
-    def i2xyz(self, i):
-        z = i & 3
-        y = (i >> 2) & 3
-        x = (i >> 4) & 3
-        return (x, y, z)
+    cells = ['   ']*64
+    for ii,(x,o) in enumerate(xos):
+        # numbering for debugging statements
+        if isnumbering:
+            i = ii+1
+            if i < 10:
+                cells[x] = ' X%d' % i
+                if o is not None:
+                    cells[o] = ' O%d' % i
+            else:
+                cells[x] = 'X%d' % i
+                if o is not None:
+                    cells[o] = 'O%d' % i
+        else:
+            cells[x] = ' X '
+            if o is not None:
+                cells[o] = ' O '
 
-    def zyx2i(self, pt):
-        z, y, x = pt
-        return x * 16 + y * 4 + z
+    # Print the 4x4x4 board with layers side by side, with specified indexing.
+    print('          0                1                2                3')
+    print('    0   1   2   3    0   1   2   3    0   1   2   3    0   1   2   3')
 
-    def print_board(self, winner=None, state=None):
-        """Print the 4x4x4 board with layers side by side, with specified indexing."""
-        if state == None:
-            state = self.state
+    # Board rows with row indices
+    for x in range(4):
+        row_parts = [f"{x}"]  # Start with row index
+        for z in range(4):  # For each layer
+            row = []
+            for y in range(4):
+                i = zyx2c(z, y, x)
+                cell = cells[i]
+                if winner and i in winner:
+                    cell = f"\033[33m{cell}\033[0m"  # Some color for winnng user
+                else:
+                    if i == lastx:
+                        cell = f"\033[32m{cell}\033[0m"  # Green for user
+                    elif i == lasto:
+                        cell = f"\033[31m{cell}\033[0m"  # Red for computer
+                row.append(cell)  # Center cell content in 4-char space
+            row_parts.append("|".join(row))
+        print("  ".join(row_parts))
+        if x < 3:
+            print('   '+ '  '.join(['+'.join(['---']*4)]*4))
+    print()
 
-        print('          0                1                2                3')
-        print('    0   1   2   3    0   1   2   3    0   1   2   3    0   1   2   3')
+# The layout, for figuring out corners, etc.
+#           0                1                2                3
+#     0   1   2   3    0   1   2   3    0   1   2   3    0   1   2   3
+# 0   0c| 4e| 8e|12c   1e| 5s| 9s|13e   2e| 6s|10s|14e   3c| 7e|11e|15c
+#    ---+---+---+---  ---+---+---+---  ---+---+---+---  ---+---+---+---
+# 1  16e|20s|24s|28e  17s|21i|25i|29s  18s|22i|26i|30s  19e|23s|27s|31e
+#    ---+---+---+---  ---+---+---+---  ---+---+---+---  ---+---+---+---
+# 2  32e|36s|40s|44e  33s|37i|41i|45s  34s|38i|42i|46s  35e|39s|43s|47e
+#    ---+---+---+---  ---+---+---+---  ---+---+---+---  ---+---+---+---
+# 3  48c|52e|56e|60c  49e|53s|57s|61e  50e|54s|58s|62e  51c|55e|59e|63c
+if False:
+    # prints above layout of index mapped to cell
+    print_board(range(64), tuple())
+    exit(0)
 
-        # Board rows with row indices
-        for x in range(4):
-            row_parts = [f"{x}"]  # Start with row index
-            for z in range(4):  # For each layer
-                row = []
-                for y in range(4):
-                    i = self.zyx2i((z, y, x))
-                    cell = state.board[i]
-                    if winner and i in winner:
-                        cell = f" \033[33m{cell}\033[0m "  # Some color for winnng user
-                    else:
-                        if i == self.last_user_move:
-                            cell = f" \033[32m{cell}\033[0m "  # Green for user
-                        elif i == self.last_computer_move:
-                            cell = f" \033[31m{cell}\033[0m "  # Red for computer
-                        else:
-                            cell = ' '+cell+' '
-                    row.append(cell)  # Center cell content in 4-char space
-                row_parts.append("|".join(row))
-            print("  ".join(row_parts))
-            if x < 3:
-                print('   '+ '  '.join(['+'.join(['---']*4)]*4))
-        print()
-
+# constructed by hand from above chart
+corners = [ 0,  3, 12, 15, 48, 51, 60, 63]
+edges =   [ 1,  2,  4,  7,  8, 11, 13, 14, 16, 19, 28, 31, 32, 35, 44, 47, 49, 50, 52, 55, 56, 59, 61, 62]
+inners  = [21, 22, 25, 26, 37, 38, 41, 42]
+surface = [ 5,  6,  9, 10, 17, 18, 20, 23, 24, 27, 29, 30, 33, 34, 36, 39, 40, 43, 45, 46, 53, 54, 57, 58]
 
 # winner_check determines if the 4 points line in a line
 # (i,i,i,i) in a straight line, and (0,1,2,3) and (3,2,1,0) for diagonals
@@ -74,46 +95,13 @@ for cs in itertools.combinations(((x,y,z) for x in range(4) for y in range(4) fo
     scs = tuple(cs)
     xs,ys,zs = zip(*scs)
     if all(wc in winner_check for wc in (xs,ys,zs)):
-        ncs = tuple(TicTacToe.zyx2i(None, (z,y,x)) for x,y,z in scs)
+        ncs = tuple(zyx2c(z,y,x) for x,y,z in scs)
         winners.add(ncs)
+winners = tuple(sorted(tuple(sorted(ws)) for ws in winners))
+print('winners =', winners)
 
-if True:
-    # print out the 4-tuple version of winners
-    print('len(winners):', len(winners))
-    print('winners = [')
-    for ws in sorted(winners):
-        print('   ', ws, ',')
-    print(']')
-    exit(0)
-
-# now that we have winners as a set of 4-tuple,
-# figure out winners for each point in the cube
-def mktrips(c):
-    ts = set()
+if False:
+    # print out the winners, to verify
     for ws in winners:
-        if c in ws:
-            ts.add(Triple(tuple(sorted([w for w in ws if w != c]))))
-    return tuple(sorted(ts))
-
-# now create Triples: those cells that make a winner for some cell
-winners = [mktrips(i) for i in range(64)]
-
-# print them out, to copy-paste into cubic.py
-print('winners = [')
-for ws in winners:
-    print('   ', ws, ',')
-print(']')
-
-exit(0)
-
-# print out the winners, to verify
-game = TicTacToe()
-i = 0
-for w0,ws in enumerate(winners):
-    print(w0, ws)
-    for w in ws:
-        win = [w0, *w.ws]
-        state = State(''.join([('W' if x in win else ' ') for x in range(64)]), 'X')
-        print('===============================', i := i+1)
-        print('index =', w0, tuple(reversed(game.i2xyz(w0))), '|', w.ws, [tuple(reversed(game.i2xyz(c))) for c in w.ws])
-        game.print_board(win, state)
+        print(ws)
+        print_board(ws, tuple(), winner=ws, isnumbering=False)
