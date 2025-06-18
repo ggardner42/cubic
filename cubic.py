@@ -68,9 +68,9 @@ def check_win(c, cs):
             return sws
     return None
 
-def is_board_full(xs, os):
+def is_board_full(ys, ms):
     """Check if the board is full."""
-    return len(xs + os) == 64
+    return len(ys + ms) == 64
 
 def print_board(xs, os, markx='X', marko='O', winner=None, isnumbering=True):
     lastx = lasto = 100
@@ -247,7 +247,7 @@ def find_best_move(xs, os):
                 else:
                     tbestv[4] += 1
             tbestv = tuple(tbestv)
-            print('tbestv:', tbestv, c, '(', bestv, bc, ')', cells)
+            #print('tbestv:', tbestv, c, '(', bestv, bc, ')', cells)
             if bestv < tbestv:
                 bestv = tbestv
                 bc = c
@@ -270,25 +270,42 @@ def find_best_move(xs, os):
         return move
     return bestc
 
-
 def main():
     print("Welcome to 4x4x4 Tic-Tac-Toe!")
+    print("'X' always goes first.")
+
+    while True:
+        user_input = input("Do you wish to be 'X' and go first? ").strip()
+        if 'yes'.startswith(user_input):
+            print("You are 'X', computer is 'O'.")
+            your_mark = 'X'
+            my_mark = 'O'
+            ys = tuple() # your marks
+            ms = tuple() # my marks
+            break
+        elif 'no'.startswith(user_input):
+            print("Computer is 'X', you are 'O'.")
+            my_mark = 'X'
+            your_mark = 'O'
+            ms = (0,) # my marks, starting with 000
+            ys = tuple() # your marks
+            break
+        else:
+            print("Please answer [y]es or [n]o.")
+
+    print()
     print("Enter moves as three digits (zyx, e.g., 000 or 333).")
     print("The top most row of numbers (over the planes) are z.")
     print("The row of numbers over the columns are y.")
     print("The numbers at the start of each row are x.")
-    print("You are 'X', computer is 'O'.")
 
     #print('Start of Game', file=flog)
 
     # All the Xs and all the Os
-    xs = tuple()
-    os = tuple()
-
     while True:
         # get and validate user move
         while True:
-            print_board(xs, os, isnumbering=False)
+            print_board(ys, ms, markx=your_mark, marko=my_mark, isnumbering=False)
             user_input = input('Your move (zyx): ').strip()
             coords = parse_input(user_input)
             if coords is None:
@@ -296,44 +313,44 @@ def main():
                 continue
             z,y,x = coords
             cx = zyx2c(z,y,x)
-            if cx in (xs+os):
+            if cx in (ys+ms):
                 print("Invalid move.", user_input, "is already taken.")
                 continue
             break
 
-        # add opponent move to xs
-        xs = xs+(cx,)
+        # add opponent move
+        ys = ys+(cx,)
         #print('User Move:', user_input, coords, cx, flush=True)
         #print('User Move:', user_input, coords, cx, file=flog)
 
-        ws = check_win(cx, xs)
+        ws = check_win(cx, ys)
         if ws:
             print("You win!")
-            print_board(xs, os, winner=ws, isnumbering=False)
+            print_board(ys, ms, markx=your_mark, marko=my_mark, winner=ws, isnumbering=False)
             break
-        if is_board_full(xs, os):
+        if is_board_full(ys, ms):
             print("It's a tie! At AAA")
-            print_board(xs, os, isnumbering=False)
+            print_board(ys, ms, markx=your_mark, marko=my_mark, isnumbering=False)
             break
 
         # Computer's turn
         beg = time.perf_counter()
-        co = find_best_move(xs, os)
+        co = find_best_move(ys, ms)
         end = time.perf_counter()
         diff = end - beg
-        os = os+(co,)
+        ms = ms+(co,)
         x, y, z = c2xyz(co)
         print(f"Computer's move: {z}{y}{x} (elapsed time: {diff:.9f} seconds)")
         #print(f"Computer's move: {z}{y}{x} ({co}) (elapsed time: {diff:.9f} seconds)", file=flog, flush=True)
 
-        ws = check_win(co, os)
+        ws = check_win(co, ms)
         if ws:
             print("Computer wins!")
-            print_board(xs, os, winner=ws, isnumbering=False)
+            print_board(ys, ms, markx=your_mark, marko=my_mark, winner=ws, isnumbering=False)
             break
-        if is_board_full(xs, os):
+        if is_board_full(ys, ms):
             print("It's a tie! At BBB")
-            print_board(xs, os, isnumbering=False)
+            print_board(ys, ms, markx=your_mark, marko=my_mark, isnumbering=False)
             break
 
 if __name__ == "__main__":
