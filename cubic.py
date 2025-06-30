@@ -140,7 +140,6 @@ def find_forced_win(ys, ms, marky, markm, min_len, findfirst=False):
         #print('Returning due to cutoff:', mlen, min_len)
         return (min_len, None) # discard
 
-    # we are O, and second to move, so this move may fill board
     sys = set(ys)
     sms = set(ms)
 
@@ -172,8 +171,8 @@ def find_forced_win(ys, ms, marky, markm, min_len, findfirst=False):
                 #print('Considering %d: YOU=%d, ME=%d' % (i, y, m), best_move)
                 #print_board(nys, nms, marky, markm)
 
-                depth, move = find_forced_win(nys, nms, marky, markm, best_move[0])
-                if depth and depth < best_move[0]:
+                depth, move = find_forced_win(nys, nms, marky, markm, best_move[0], findfirst)
+                if depth < best_move[0]:
                     #print('Got new best_move:', (depth, move), 'replacing:', best_move)
                     best_move = (depth, m)
                     if findfirst:
@@ -188,7 +187,7 @@ def find_best_move(xs, os):
 
     #print('find_best_move:', xs, os)
     # find forced win, or block opponent forced win
-    min_len = 200 # 200 represents no forced win, 100+depth represents blocking opponent win, else forced win in this many moves
+    min_len = max(2 * len(os), len(os) + 6)
     #beg = time.perf_counter()
     depth, move = find_forced_win(xs, os, 'X', 'O', min_len)
     #end = time.perf_counter()
@@ -261,7 +260,7 @@ def find_best_move(xs, os):
     # now see if X has a forced win, given this move
     #print('find_best_move for user:', xs, os)
     #beg = time.perf_counter()
-    depth, move = find_forced_win(os+(bestc,), xs, 'O', 'X', min_len, findfirst=True)
+    depth, move = find_forced_win(os+(bestc,), xs, 'O', 'X', min_len+1, findfirst=True)
     #end = time.perf_counter()
     #diff = end - beg
     #print("best for user:", (depth, move), f"(elapsed time: {diff:.9f} seconds)")
@@ -300,6 +299,8 @@ def main():
     print("The numbers at the start of each row are x.")
 
     #print('Start of Game', file=flog)
+    if my_mark == 'X':
+        print("Computer's move: 000")
 
     # All the Xs and all the Os
     while True:
